@@ -1,0 +1,75 @@
+name: abm_aggregator_local
+
+# ---------------------------------------------------------------------------
+# ЛОКАЛЬНАЯ РАЗРАБОТКА
+#   docker compose up -d --build      поднять стек
+#   docker compose logs -f backend    логи
+#   docker compose down               остановить
+#
+# Отдельный том и отдельные имена контейнеров — прод-данные не пересекаются.
+# Backend стартует с --reload и смонтированным кодом: правки подхватываются
+# без пересборки. Фронтенд здесь собирается как в проде (за nginx);
+# для горячей перезагрузки фронта удобнее `npm run dev` в ./frontend.
+#
+# Для сервера используется docker-compose.server.yml.
+# ---------------------------------------------------------------------------
+
+services:
+  mongodb:
+    image: mongo:7-jammy
+    container_name: abm_local_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-admin}
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      # Удобно подключаться MongoDB Compass'ом
+      - "127.0.0.1:27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  backend:
+    build: ./backend
+    image: abm-aggregator-backend:local
+    container_name: abm_local_backend
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+    environment:
+      MONGO_URL: mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-admin}@mongodb:27017
+      MONGO_DB_NAME: ${MONGO_DB_NAME:-abm_db}
+      SECRET_KEY: ${SECRET_KEY:-dev_secret_change_me}
+      POLLING_INTERVAL_SECONDS: ${POLLING_INTERVAL_SECONDS:-180}
+      OZON_API_KEY: ${OZON_API_KEY:-}
+      OZON_CLIENT_ID: ${OZON_CLIENT_ID:-}
+      WB_YML_URL: ${WB_YML_URL:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api/v1}
+        VITE_WS_URL: ${VITE_WS_URL:-}
+    image: abm-aggregator-frontend:local
+    container_name: abm_local_frontend
+    ports:
+      - "3005:3005"
+    depends_on:
+      - backend
+
+volumes:
+  mongo_data:
+    name: abm_local_mongo_data
+

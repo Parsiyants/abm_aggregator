@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+motor
+pymongo
+httpx
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+pyjwt
+APScheduler
+tzlocal
+aiogram
+pydantic
+email-validator
+websockets

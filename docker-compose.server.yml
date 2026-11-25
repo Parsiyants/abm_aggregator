@@ -1,0 +1,98 @@
+name: abm_aggregator
+
+# ---------------------------------------------------------------------------
+# СЕРВЕР (production)
+#   Сборка и запуск прямо на сервере:
+#     docker compose -f docker-compose.server.yml up -d --build
+#
+# Наружу порты не открываются: контейнеры слушают только 127.0.0.1,
+# запросы принимает системный nginx.
+# ---------------------------------------------------------------------------
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  mongodb:
+    image: mongo:7-jammy
+    container_name: abm_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:?MONGO_USER is required}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD is required}
+    volumes:
+      # Имя тома задаётся в .env (MONGO_VOLUME_NAME).
+      # Можно указать старый том (например abm_app_mongo_data) —
+      # данные подхватятся как есть, без переноса.
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    logging: *default-logging
+
+  backend:
+    build:
+      context: ./backend
+    image: abm-aggregator-backend:latest
+    container_name: abm_backend
+    restart: unless-stopped
+    environment:
+      # Внутри compose база доступна по имени сервиса
+      MONGO_URL: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017
+      MONGO_DB_NAME: ${MONGO_DB_NAME:?MONGO_DB_NAME is required}
+      # Секреты передаются явным списком: в контейнер не попадают
+      # посторонние переменные из .env
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      POLLING_INTERVAL_SECONDS: ${POLLING_INTERVAL_SECONDS:-180}
+      OZON_API_KEY: ${OZON_API_KEY:-}
+      OZON_CLIENT_ID: ${OZON_CLIENT_ID:-}
+      WB_YML_URL: ${WB_YML_URL:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    ports:
+      # Только localhost — снаружи запросы принимает системный nginx
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    logging: *default-logging
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Относительный URL: фронт ходит в /api/v1, nginx контейнера
+        # проксирует запросы в backend:8000
+        VITE_API_URL: ${VITE_API_URL:-/api/v1}
+        # Пусто → ws/wss собирается в рантайме из адреса страницы
+        VITE_WS_URL: ${VITE_WS_URL:-}
+    image: abm-aggregator-frontend:latest
+    container_name: abm_frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3005}:3005"
+    depends_on:
+      backend:
+        condition: service_started
+    logging: *default-logging
+
+volumes:
+  mongo_data:
+    name: ${MONGO_VOLUME_NAME:-abm_aggregator_mongo_data}

@@ -1,0 +1,49 @@
+# Logs
+logs
+*.log
+/frontend/npm-debug.log*
+/frontend/yarn-debug.log*
+/frontend/yarn-error.log*
+/frontend/pnpm-debug.log*
+/frontend/lerna-debug.log*
+
+# Секреты
+.env
+.env.*
+.env.local
+!.env.example
+!frontend/.env.development
+!frontend/.env.production
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Архивы/бэкапы
+*.zip
+backend/backups/
+
+/frontend/node_modules
+/frontend/.DS_Store
+/frontend/dist
+/frontend/dist-ssr
+/frontend/coverage
+/frontend/*.local
+
+/frontend/cypress/videos/
+/frontend/cypress/screenshots/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+*.tsbuildinfo

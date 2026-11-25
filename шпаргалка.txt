@@ -1,0 +1,54 @@
+1. 📂 Сохранить локальные изменения
+# Перейти в папку проекта
+cd C:\Users\User1\Desktop\abm_server\abm_agregator
+
+# Посмотреть изменения
+git status
+
+# Добавить всё
+git add .
+
+# Закоммитить с комментарием
+git commit -m "краткое описание изменений"
+
+
+2. 📦 Собрать и запушить образы в Docker Hub
+# Пересобрать образы
+docker compose build
+
+# Затегировать
+docker tag abm_agregator-backend parsiyants/abm-backend:latest
+docker tag abm_agregator-frontend parsiyants/abm-frontend:latest
+
+# Запушить
+docker push parsiyants/abm-backend:latest
+docker push parsiyants/abm-frontend:latest
+
+
+3. 🔌 Подключиться к серверу
+ssh root@168.222.140.36
+
+
+4. 🚀 Запустить деплой
+cd /root/abm_app
+./deploy.sh
+
+
+📋 Быстрые команды
+# ВСЁ ОДНОЙ СТРОКОЙ (локально):
+docker compose build && docker push parsiyants/abm-backend:latest && docker push parsiyants/abm-frontend:latest
+
+# НА СЕРВЕРЕ:
+ssh root@168.222.140.36 "cd /root/abm_app && ./deploy.sh"
+
+
+🧼 Если что-то пошло не так
+# На сервере проверить логи
+docker compose logs backend --tail 30
+docker compose logs nginx --tail 30
+
+# Перезапустить
+docker compose restart
+
+# Полный перезапуск с очисткой
+docker compose down && ./deploy.sh
