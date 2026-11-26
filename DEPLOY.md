@@ -212,9 +212,9 @@ curl -sI  http://127.0.0.1:3005/ | head -1    # HTTP/1.1 200 OK
 | `POST /api/v1/auth/login` | вход и выдача JWT                                    |
 | `GET /health`             | docker healthcheck                                   |
 | `WS /api/v1/ws`           | токен передаётся в `?token=`, проверяется в хендлере |
+| `GET /api/v1/docs`        | Swagger UI (доступен всегда, см. 6.2)                |
 
-`POST /api/v1/auth/register` тоже требует токен — самостоятельная регистрация
-закрыта. `/docs` и `/openapi.json` на сервере выключены (`ENABLE_DOCS=false`).
+`POST /api/v1/auth/register` требует токен — самостоятельная регистрация закрыта.
 
 Поэтому первого пользователя создаём сидом:
 
@@ -249,6 +249,25 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/auth/login \
 Дополнительных пользователей авторизованный админ создаёт через
 `POST /api/v1/auth/register` (в UI — страница `/register`, доступна только
 после входа).
+
+### 6.2 Документация API
+
+Swagger всегда доступен — никаких переменных в `.env` не нужно. Документация
+живёт под тем же префиксом, что и сам API, поэтому проходит через уже
+существующий прокси edge-nginx (`location /api/v1/`).
+
+| Где          | URL                                 |
+| ------------ | ----------------------------------- |
+| снаружи      | `https://abm-order.ru/api/v1/docs`  |
+| с сервера    | `http://127.0.0.1:8000/api/v1/docs` |
+| openapi.json | `.../api/v1/openapi.json`           |
+
+Так как весь API закрыт, в Swagger нужно нажать **Authorize** и вставить токен,
+полученный из `POST /api/v1/auth/login`. Без этого кнопка _Try it out_ вернёт 401.
+
+> ℹ️ Схема API видна любому, кто знает адрес. Если понадобится скрыть —
+> закройте `location /api/v1/docs` и `/api/v1/openapi.json` basic-авторизацией
+> на edge-nginx или удалите `docs_url`/`openapi_url` в `main.py`.
 
 ## 7. Системный nginx (edge)
 
@@ -371,7 +390,7 @@ docker image prune -a -f     # только если реально не хва�
 - [ ] `docker compose -f docker-compose.server.yml ps` — все три сервиса `Up`
 - [ ] `curl http://127.0.0.1:8000/health` → `{"status":"ok"}`
 - [ ] `curl -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/v1/orders` → `401` (API закрыт)
-- [ ] `curl -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/docs` → `404` (доки выключены)
+- [ ] `curl -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/v1/docs` → `200` (Swagger)
 - [ ] админ создан сидом, `POST /api/v1/auth/login` возвращает `access_token`
 - [ ] вход в приложение работает, старые пользователи на месте
 - [ ] заказы/отгрузки отдаются (значит база перенесена)

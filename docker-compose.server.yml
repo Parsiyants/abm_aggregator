@@ -50,8 +50,6 @@ services:
       # посторонние переменные из .env
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
       POLLING_INTERVAL_SECONDS: ${POLLING_INTERVAL_SECONDS:-180}
-      # /docs и /openapi.json на сервере выключены (ENABLE_DOCS=true — включить)
-      ENABLE_DOCS: ${ENABLE_DOCS:-false}
       OZON_API_KEY: ${OZON_API_KEY:-}
       OZON_CLIENT_ID: ${OZON_CLIENT_ID:-}
       WB_YML_URL: ${WB_YML_URL:-}

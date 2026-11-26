@@ -36,9 +36,9 @@ docker compose -f docker-compose.server.yml ps
 curl -fsS http://127.0.0.1:8000/health
 curl -sI http://127.0.0.1:3005/ | head -1
 
-# API закрыт? должно быть 401 без токена и 404 на /docs
+# API закрыт? должно быть 401 без токена
 curl -o /dev/null -w 'orders: %{http_code}\n' http://127.0.0.1:8000/api/v1/orders
-curl -o /dev/null -w 'docs:   %{http_code}\n' http://127.0.0.1:8000/docs
+curl -o /dev/null -w 'docs:   %{http_code}\n' http://127.0.0.1:8000/api/v1/docs   # 200
 
 # что реально задеплоено
 git log --oneline -1
@@ -78,13 +78,15 @@ TOKEN=$(curl -s -X POST http://127.0.0.1:8000/api/v1/auth/login \
 curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/api/v1/auth/me
 ```
 
-Документация API (`/docs`) на сервере выключена. Включить на время отладки:
+Документация API доступна всегда, ничего включать не нужно:
 
-```bash
-# в .env: ENABLE_DOCS=true
-docker compose -f docker-compose.server.yml up -d --force-recreate backend
-# после отладки вернуть ENABLE_DOCS=false и снова пересоздать контейнер
 ```
+https://abm-order.ru/api/v1/docs          # снаружи
+http://127.0.0.1:8000/api/v1/docs        # с сервера
+```
+
+В Swagger нажмите **Authorize** и вставьте токен из `/auth/login`, иначе
+_Try it out_ вернёт 401.
 
 ## 4. Логи
 

@@ -33,17 +33,15 @@ class FixBracketQueryParamsMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
-# Документация (/docs, /openapi.json) по умолчанию выключена:
-# открытая схема API — лишняя информация для посторонних.
-# Включить для отладки: ENABLE_DOCS=true
-ENABLE_DOCS = os.getenv("ENABLE_DOCS", "false").strip().lower() in ("1", "true", "yes", "on")
-
+# Документация API всегда включена и живёт под /api/v1/, как и сам API:
+#   https://abm-order.ru/api/v1/docs
+#   https://abm-order.ru/api/v1/openapi.json
 app = FastAPI(
     title="ABM Marketplace Aggregator API",
     version="1.0.0",
-    docs_url="/docs" if ENABLE_DOCS else None,
+    docs_url="/api/v1/docs",
     redoc_url=None,
-    openapi_url="/openapi.json" if ENABLE_DOCS else None,
+    openapi_url="/api/v1/openapi.json",
 )
 
 origins = [
