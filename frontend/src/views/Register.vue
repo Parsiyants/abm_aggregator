@@ -15,13 +15,16 @@
       </div>
       
       <button type="submit" :disabled="isLoading">
-        {{ isLoading ? 'Регистрация...' : 'Зарегистрироваться' }}
+        {{ isLoading ? 'Создание...' : 'Создать пользователя' }}
       </button>
 
       <p v-if="error" class="error-message">{{ error }}</p>
-      
+      <p v-if="success" class="success-message">{{ success }}</p>
+
       <p class="link-text">
-        Уже есть аккаунт? <router-link to="/login">Войти</router-link>
+        <router-link to="/">На главную</router-link>
+        ·
+        <router-link to="/login">Выйти</router-link>
       </p>
     </form>
   </div>
@@ -29,26 +32,29 @@
 
 <script setup>
 import { ref } from 'vue';
-import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 
 const email = ref('');
 const password = ref('');
 const isLoading = ref(false);
 const error = ref(null);
+const success = ref(null);
 
 const authStore = useAuthStore();
-const router = useRouter();
 
 const handleRegister = async () => {
   isLoading.value = true;
   error.value = null;
+  success.value = null;
 
   try {
+    // Регистрация требует токена: доступна только авторизованным
     await authStore.register(email.value, password.value);
-    router.push('/');
+    success.value = `Пользователь ${email.value} создан`;
+    email.value = '';
+    password.value = '';
   } catch (err) {
-    const message = err.response?.data?.detail || 'Не удалось зарегистрироваться.';
+    const message = err.response?.data?.detail || 'Не удалось создать пользователя.';
     error.value = message;
   } finally {
     isLoading.value = false;
@@ -96,6 +102,10 @@ button:disabled {
 }
 .error-message {
   color: red;
+  margin-top: 15px;
+}
+.success-message {
+  color: #2f855a;
   margin-top: 15px;
 }
 .link-text {

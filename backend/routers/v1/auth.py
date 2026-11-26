@@ -18,15 +18,22 @@ router = APIRouter(
 )
 
 # -------------------------------------------------------------
-# РЕГИСТРАЦИЯ
+# РЕГИСТРАЦИЯ (только для авторизованных пользователей)
 # -------------------------------------------------------------
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(
-    user_data: UserRegister, 
-    repo: UserRepository = Depends(UserRepository)
+    user_data: UserRegister,
+    repo: UserRepository = Depends(UserRepository),
+    current_user_id: str = Depends(get_current_user_id),
 ) -> Dict[str, Any]:
-    
+    """
+    Создаёт нового пользователя.
+
+    Требует Bearer-токен: самостоятельная регистрация закрыта,
+    первого администратора создаёт скрипт seed_admin.py.
+    """
+
     # 1. Проверяем, существует ли пользователь
     if await repo.get_by_email(user_data.email):
         raise HTTPException(
@@ -36,21 +43,15 @@ async def register(
 
     # 2. Хэшируем пароль
     hashed_password = get_password_hash(user_data.password)
-    
+
     # 3. Создаем пользователя
     new_user_doc = await repo.create_user(user_data.email, hashed_password)
 
     if not new_user_doc:
          raise HTTPException(status_code=500, detail="User creation failed")
 
-    # 4. Создаем JWT-токен для мгновенного входа после регистрации
-    access_token = create_access_token(data={"user_id": new_user_doc["_id"]})
-
-    return {
-        "user": new_user_doc,
-        "access_token": access_token, 
-        "token_type": "bearer"
-    }
+    # 4. Токен нового пользователя наружу не отдаём — создатель сессии не меняет
+    return {"user": new_user_doc}
 
 # -------------------------------------------------------------
 # ВХОД Через JSON

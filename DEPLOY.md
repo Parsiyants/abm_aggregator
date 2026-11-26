@@ -3,6 +3,9 @@
 Схема: **GitHub Actions → SSH на сервер → сборка и запуск прямо на сервере**.
 Никаких реестров образов: `docker compose -f docker-compose.server.yml up -d --build`.
 
+> 🔖 Быстрые команды на каждый день (git, деплой, откат, логи, алиасы) —
+> в [CHEATSHEET.md](CHEATSHEET.md).
+
 ```
 push в main
    │
@@ -133,8 +136,14 @@ nano .env
 **Критично:** `MONGO_USER`, `MONGO_PASSWORD`, `MONGO_DB_NAME` должны **точно
 совпадать** со старым `/root/abm_app/.env`. Root-пользователь хранится внутри
 самих данных MongoDB — если значение поменять «на бумаге», база перестанет
-пускать. То же с `SECRET_KEY`: при его смене все текущие JWT станут невалидны
-(пользователям придётся войти заново).
+пускать.
+
+> 🔴 **`SECRET_KEY` менять нельзя после того, как заведены пользователи.**
+> Он используется и как ключ подписи JWT, **и как соль для хэша пароля**
+> (`sha256(password + SECRET_KEY)`). Новое значение = все сессии невалидны
+> **и** ни один пароль не подойдёт. Если ключ всё же меняется — каждому
+> пользователю нужно заново задать пароль (`seed_admin.py --update` для админа,
+> `POST /api/v1/auth/register` для остальных).
 
 ```bash
 cd /root/abm_aggregator
@@ -194,47 +203,119 @@ curl -sI  http://127.0.0.1:3005/ | head -1    # HTTP/1.1 200 OK
 за счёт кэша слоёв Docker. Требуется ~1.5 ГБ свободной RAM на сборку фронтенда
 и ~2 ГБ диска.
 
-## 7. Системный nginx → 127.0.0.1:3005
+### 6.1 Первый пользователь (обязательно)
 
-Контейнеры публикуются только на localhost, снаружи их закрывает ваш nginx:
+**Весь API закрыт авторизацией.** Открыты только:
+
+| Эндпоинт                  | Почему открыт                                        |
+| ------------------------- | ---------------------------------------------------- |
+| `POST /api/v1/auth/login` | вход и выдача JWT                                    |
+| `GET /health`             | docker healthcheck                                   |
+| `WS /api/v1/ws`           | токен передаётся в `?token=`, проверяется в хендлере |
+
+`POST /api/v1/auth/register` тоже требует токен — самостоятельная регистрация
+закрыта. `/docs` и `/openapi.json` на сервере выключены (`ENABLE_DOCS=false`).
+
+Поэтому первого пользователя создаём сидом:
+
+```bash
+cd /root/abm_aggregator
+docker compose -f docker-compose.server.yml exec backend \
+  python seed_admin.py --email admin@abm-order.ru
+# пароль запросит интерактивно (ввод не отображается)
+```
+
+Без интерактива:
+
+```bash
+docker compose -f docker-compose.server.yml exec \
+  -e ADMIN_PASSWORD='сильный_пароль' backend \
+  python seed_admin.py --email admin@abm-order.ru
+
+# сменить пароль существующему
+docker compose -f docker-compose.server.yml exec backend \
+  python seed_admin.py --email admin@abm-order.ru --update
+```
+
+Пароль короче 8 символов скрипт не примет. Проверка:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@abm-order.ru","password":"..."}' | head -c 120
+# → {"access_token":"eyJ...", ...}
+```
+
+Дополнительных пользователей авторизованный админ создаёт через
+`POST /api/v1/auth/register` (в UI — страница `/register`, доступна только
+после входа).
+
+## 7. Системный nginx (edge)
+
+Контейнеры публикуются только на localhost, снаружи их закрывает edge-nginx
+(конфиг лежит отдельно: `deploy/edge/conf.d/abm.conf`).
+
+| location     | upstream         | что это                       |
+| ------------ | ---------------- | ----------------------------- |
+| `/api/v1/ws` | `127.0.0.1:8000` | WebSocket (нужен `Upgrade`)   |
+| `/api/v1/`   | `127.0.0.1:8000` | REST API                      |
+| `/`          | `127.0.0.1:3005` | фронтенд (nginx в контейнере) |
 
 ```nginx
-# /etc/nginx/sites-available/abm-order.ru
 server {
-    listen 80;
-    server_name abm-order.ru www.abm-order.ru;
+    listen 443 ssl;
+    server_name abm-order.ru;
+    # ... ssl_certificate ...
 
-    client_max_body_size 25m;
+    client_max_body_size 50m;
+
+    # WebSocket: префикс длиннее, чем /api/v1/, поэтому nginx берёт этот блок
+    location /api/v1/ws {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    location /api/v1/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:3005;
-        proxy_http_version 1.1;
-        proxy_set_header Host              $host;
-        proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # WebSocket — отдельным location
-    location /api/v1/ws {
-        proxy_pass http://127.0.0.1:3005;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade    $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host       $host;
-        proxy_read_timeout 3600s;
     }
 }
 ```
 
+> ⚠️ Путь WebSocket — **`/api/v1/ws`**, а не `/ws`. Если блока `/api/v1/ws` нет,
+> handshake уходит в `/api/v1/` без заголовков `Upgrade` и падает (400/426 вместо
+> `101 Switching Protocols`).
+
+Альтернатива: не описывать `/api` на edge вообще — тогда запросы проксируются
+в контейнер фронтенда (`:3005`), где уже есть `location ^~ /api/` → `backend:8000`.
+Так тоже работает, но появляется лишний хоп.
+
 ```bash
-ln -s /etc/nginx/sites-available/abm-order.ru /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 certbot --nginx -d abm-order.ru -d www.abm-order.ru
 ```
-
-`/api/*` отдельно проксировать не нужно — это делает nginx внутри контейнера
-фронтенда (`proxy_pass http://backend:8000`).
 
 ## 8. Автодеплой
 
@@ -289,6 +370,9 @@ docker image prune -a -f     # только если реально не хва�
 
 - [ ] `docker compose -f docker-compose.server.yml ps` — все три сервиса `Up`
 - [ ] `curl http://127.0.0.1:8000/health` → `{"status":"ok"}`
+- [ ] `curl -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/v1/orders` → `401` (API закрыт)
+- [ ] `curl -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/docs` → `404` (доки выключены)
+- [ ] админ создан сидом, `POST /api/v1/auth/login` возвращает `access_token`
 - [ ] вход в приложение работает, старые пользователи на месте
 - [ ] заказы/отгрузки отдаются (значит база перенесена)
 - [ ] DevTools → Network → WS: `101 Switching Protocols` на `/api/v1/ws`

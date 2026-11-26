@@ -46,6 +46,8 @@ services:
       MONGO_DB_NAME: ${MONGO_DB_NAME:-abm_db}
       SECRET_KEY: ${SECRET_KEY:-dev_secret_change_me}
       POLLING_INTERVAL_SECONDS: ${POLLING_INTERVAL_SECONDS:-180}
+      # локально удобно смотреть /docs
+      ENABLE_DOCS: ${ENABLE_DOCS:-true}
       OZON_API_KEY: ${OZON_API_KEY:-}
       OZON_CLIENT_ID: ${OZON_CLIENT_ID:-}
       WB_YML_URL: ${WB_YML_URL:-}

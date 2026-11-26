@@ -18,8 +18,10 @@ const router = createRouter({
       path: '/register',
       name: 'register',
       component: () => import('../views/Register.vue'),
-      meta: { 
-        requiresAuth: false,
+      meta: {
+        // Самостоятельная регистрация закрыта: страница доступна только
+        // авторизованному пользователю (создание новых учёток)
+        requiresAuth: true,
         layout: 'auth'
       }
     },
@@ -88,8 +90,8 @@ router.beforeEach((to, from, next) => {
     authStore.redirectPath = to.fullPath
     next('/login')
   } 
-  // Если пользователь авторизован и пытается зайти на логин/регистрацию
-  else if ((to.name === 'login' || to.name === 'register') && authStore.isLoggedIn) {
+  // Если пользователь авторизован и пытается зайти на страницу логина
+  else if (to.name === 'login' && authStore.isLoggedIn) {
     next('/')
   } 
   else {

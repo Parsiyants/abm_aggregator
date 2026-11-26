@@ -35,23 +35,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function register(email, password) {
-    try {
-      const { data } = await api.post('/auth/register', { email, password })
-      const { access_token } = data
-
-      token.value = access_token
-      user_email.value = email
-      localStorage.setItem('userToken', access_token)
-      localStorage.setItem('userEmail', email)
-      
-
-      connectWebSocket(access_token)
-
-      return true
-    } catch (err) {
-      logout()
-      throw err
-    }
+    // Регистрация закрыта для анонимов: пользователей создаёт только
+    // авторизованный админ. Текущую сессию не трогаем (токен не перезаписываем).
+    const { data } = await api.post('/auth/register', { email, password })
+    return data
   }
 
   function logout() {

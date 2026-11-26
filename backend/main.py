@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.datastructures import QueryParams
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -11,6 +11,7 @@ import os
 from database.mongodb import connect_to_mongo, close_mongo_connection, init_indexes
 from routers.v1 import references, orders, auth, websocket as ws, migrations, logs, sync
 from services.poller import start_polling, stop_polling
+from services.security import get_current_user_id
 from services.wb_sync_scheduler import start_wb_sync, stop_wb_sync
 
 # 1. Загрузка переменных окружения
@@ -32,9 +33,17 @@ class FixBracketQueryParamsMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
+# Документация (/docs, /openapi.json) по умолчанию выключена:
+# открытая схема API — лишняя информация для посторонних.
+# Включить для отладки: ENABLE_DOCS=true
+ENABLE_DOCS = os.getenv("ENABLE_DOCS", "false").strip().lower() in ("1", "true", "yes", "on")
+
 app = FastAPI(
     title="ABM Marketplace Aggregator API",
     version="1.0.0",
+    docs_url="/docs" if ENABLE_DOCS else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if ENABLE_DOCS else None,
 )
 
 origins = [
@@ -58,12 +67,23 @@ app.add_middleware(
 )
 
 # 2. Подключение роутеров
-app.include_router(orders.router, prefix="/api/v1/orders", tags=["Orders"])
-app.include_router(references.router, prefix="/api/v1/references", tags=["References"])
+#
+# ВСЕ бизнес-эндпоинты требуют JWT (Bearer-токен в заголовке Authorization).
+# Открытыми остаются только:
+#   POST /api/v1/auth/login  — вход и выдача токена
+#   GET  /health             — проверка живости (docker healthcheck)
+#   WS   /api/v1/ws          — проверяет токен в query (?token=...)
+# Регистрация (POST /api/v1/auth/register) тоже требует токен — см. auth.py.
+PROTECTED = [Depends(get_current_user_id)]
+
+app.include_router(orders.router, prefix="/api/v1/orders", tags=["Orders"], dependencies=PROTECTED)
+app.include_router(references.router, prefix="/api/v1/references", tags=["References"], dependencies=PROTECTED)
+app.include_router(sync.router, prefix="/api/v1", dependencies=PROTECTED)
+app.include_router(migrations.router, prefix="/api/v1", dependencies=PROTECTED)
+app.include_router(logs.router, prefix="/api/v1", dependencies=PROTECTED)
+# В auth.py каждый маршрут подключается отдельно (login — открыт, register — закрыт)
 app.include_router(auth.router, prefix="/api/v1")
-app.include_router(sync.router, prefix="/api/v1")
-app.include_router(migrations.router, prefix="/api/v1")
-app.include_router(logs.router, prefix="/api/v1")
+# WebSocket: токен проверяется внутри хендлера
 app.include_router(ws.router, prefix="/api", tags=["websocket"])
 
 # Глобальная переменная для задачи бота

@@ -43,6 +43,15 @@ class UserRepository:
             
         return user_doc
 
+    async def set_password(self, email: str, hashed_password: str) -> bool:
+        """Меняет пароль существующего пользователя. True — если обновлён."""
+        collection = self._get_collection()
+        result = await collection.update_one(
+            {"email": email},
+            {"$set": {"hashed_password": hashed_password}},
+        )
+        return result.modified_count > 0
+
     async def get_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Получает пользователя по ID."""
         collection = self._get_collection()
